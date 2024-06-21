@@ -1,13 +1,14 @@
 TARGET = Pinger
 
 CXX = g++
-CXXFLAGS = -Wall -std=c++17
+CXXFLAGS = -Wall -std=c++17 -pthread
 
 HEADERS = Application.h Pinger.h
 
 SRCS = main.cpp Application.cpp Pinger.cpp
 
 OBJS = $(SRCS:.cpp=.o)
+# Store build artifacts in `build` directory
 
 all: $(TARGET)
 

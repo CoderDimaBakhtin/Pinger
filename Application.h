@@ -8,7 +8,8 @@
 
 class App{
 private:
-    std::vector<std::shared_ptr<Pinger>> host;
+    // use unique_ptr?
+    std::vector<std::shared_ptr<Pinger>> host; // hosts
     std::vector<std::thread> threads;
 private:
     void FillingHosts();

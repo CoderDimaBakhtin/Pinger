@@ -7,9 +7,9 @@
 #include <signal.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
-
-static std::atomic<bool> exit_thread_flag{false};
+static std::atomic<bool> exit_thread_flag{false}; // should be member of Pinger object or Application
 std::mutex Pinger::mx;
 
 std::string Pinger::dns_lookup(const std::string& addr_host){
@@ -24,6 +24,12 @@ std::string Pinger::dns_lookup(const std::string& addr_host){
     return ip;
 }
 
+// mostly it requires void* and size_t
+// if you want function specification for ping_pkt
+// you can skip length field and use sizeof(ping_pkt) inside
+// event better would be 2 functions
+// unsigned short Pinger::checksum(ping_pkt& packet) {return checksum(&ping_pkt, sizeof(ping_pkt));}
+// unsigned short Pinger::checksum(void* data, int len)
 unsigned short Pinger::checksum(ping_pkt* packet, int len){
     unsigned short* buf = reinterpret_cast<unsigned short*>(packet);
     unsigned int sum=0;
@@ -46,13 +52,17 @@ Pinger::Pinger(const std::string& hostname){
     if(ip_addr.empty()){
         std::cout<<"\nDNS lookup failed! Could not resolve hostname!\n";
         Pinger_ready = false;
+        // return;
+        // return and drop next else statement
     }else{
-    	std::cout<<"\nTrying to connect to \n";
+    	std::cout<<"\nTrying to connect to \n"; // to what?
     	sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     	if(sockfd<0){
             std::cout<<"\nSocket file descriptor not received!!\n";
+            // return; Pinger_ready = false
     	}else{
-            std::cout<<"\nSocket file descriptor"<<sockfd<<"received\n";
+            // For debugging Ok, for production nope
+            std::cout<<"\nSocket file descriptor"<<sockfd<<"received\n";// this log is exces
     	}
     	int time_to_live_val = 3;
     	timeval tv_out;
@@ -68,8 +78,10 @@ Pinger::Pinger(const std::string& hostname){
     }
 }
 
+// this function can be implemented inside ping_pkt
 void Pinger::PacketFilling(){
-    bzero(&pckt, sizeof(pckt));
+    // pckt is a c++ struct you can define its own ctor or default value for all members
+    bzero(&pckt, sizeof(pckt)); // copy pasted? use memset instead
     pckt.hdr.type = ICMP_ECHO;
     pckt.hdr.un.echo.id = getpid();
     for (long unsigned int i = 0; i < sizeof(pckt.msg)-1; i++)
@@ -79,11 +91,20 @@ void Pinger::PacketFilling(){
     pckt.hdr.checksum = checksum(&pckt, sizeof(pckt));
 }
 
-void Pinger::PacketSend(){
+
+// packetSend and packed receive should be wrapped in some function
+// time_start
+// PakcetSend
+// PacketReceive
+// time_end
+void Pinger::PacketSend(){ // should return bool
     time_start = std::chrono::steady_clock::now();
     if (sendto(sockfd, &pckt, sizeof(pckt), 0,(struct sockaddr*)(&addr_con),sizeof(addr_con)) <= 0){
-    	mx.lock();
-        std::cout<<"\nPacket Sending Failed!\n";
+    	mx.lock(); // lock_guard or scoped_lock
+        {
+            // lock_guard
+            std::cout<<"\nPacket Sending Failed!\n";
+        }
         mx.unlock();
         Send_flag=false;
     }
@@ -91,17 +112,18 @@ void Pinger::PacketSend(){
 
 void Pinger::PacketReceive(){
     sockaddr_in r_addr;
-    socklen_t addr_len;
-    addr_len=sizeof(r_addr);
+    socklen_t addr_len = sizeof(r_addr);
+    // we will try to received reply but we may fail send
     if (recvfrom(sockfd, &pckt, sizeof(pckt), 0,(struct sockaddr*)&r_addr, &addr_len) <= 0 && msg_count>1){
     	mx.lock();
         std::cout<<"\nPacket receive failed!\n";
         mx.unlock();
+        // return
     }else{
         std::chrono::time_point<std::chrono::steady_clock> time_end = std::chrono::steady_clock::now();
         double timeElapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(time_end - time_start).count();
         if(Send_flag){
-            if(!(pckt.hdr.type ==69 && pckt.hdr.code==0)){
+            if(!(pckt.hdr.type ==69 && pckt.hdr.code==0)){ // Magic numbers
             	mx.lock();
             	std::cout << "Error..Packet received with ICMP type " << pckt.hdr.type << " code " << pckt.hdr.code << std::endl;
             	mx.unlock();
@@ -117,17 +139,20 @@ void Pinger::PacketReceive(){
 }
 
 void Pinger::Run(){
+    // if (!Pinger_ready) return;
     if(Pinger_ready){
-    	signal(SIGINT,[](int signal){exit_thread_flag = true;});
+    	signal(SIGINT,[](int signal){exit_thread_flag = true;}); // should be done only once
     	while(!exit_thread_flag){
             PacketFilling();
-            usleep(PING_SLEEP_RATE);
+            // why sleep is needed?
+            usleep(PING_SLEEP_RATE); // use std::this_thread::sleep_for()
             PacketSend();
             PacketReceive();
     	}
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
     	mx.lock();
+        // Should be logic of Application class
     	std::cout<<"\n"<<hostname<<" sent packets: "<<msg_count<<" lost packets: "<<msg_count - msg_received_count<<std::endl;
     	mx.unlock();
     }

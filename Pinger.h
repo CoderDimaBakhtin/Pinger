@@ -5,6 +5,7 @@
 #include <mutex>
 #include <chrono>
 
+// use static constexpr auto instead of defines
 #define PING_PKT_S 64
 #define PORT_NO 0
 #define PING_SLEEP_RATE 1000000
@@ -15,6 +16,8 @@ struct ping_pkt{
     struct icmphdr hdr;
     char msg[PING_PKT_S-sizeof(struct icmphdr)];
 };
+
+// class RawSocket
 
 class Pinger{
 private:
@@ -33,7 +36,8 @@ private:
     void PacketFilling();
     void PacketSend();
     void PacketReceive();
-    static std::mutex mx;
+    // Ping();
+    static std::mutex mx; // give better naming to understand what mutex covers
 public:
     Pinger(const std::string& hostname);
     void Run();
